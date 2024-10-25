@@ -11,6 +11,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/hex"
+	"fmt"
 	"testing"
 )
 
@@ -82,29 +83,14 @@ func TestPRF(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		out := prf.Sum(in)
-		if bytes.Compare(out, expected) != 0 {
-			t.Errorf("a) test-%d: got %x, expected %x", idx, out, expected)
-		}
 
 		_, err = prf.Write(in)
 		if err != nil {
 			t.Fatal(err)
 		}
-		out = prf.Sum(nil)
+		out := prf.Sum(nil)
 		if bytes.Compare(out, expected) != 0 {
-			t.Errorf("b) test-%d: got %x, expected %x", idx, out, expected)
-		}
-
-		for i := 0; i < len(in); i++ {
-			_, err = prf.Write(in[:i])
-			if err != nil {
-				t.Fatal(err)
-			}
-			out = prf.Sum(in[i:])
-			if bytes.Compare(out, expected) != 0 {
-				t.Errorf("c) test-%d: got %x, expected %x", idx, out, expected)
-			}
+			t.Errorf("a) test-%d: got %x, expected %x", idx, out, expected)
 		}
 
 		for i := 0; i < len(in); i++ {
@@ -115,7 +101,57 @@ func TestPRF(t *testing.T) {
 		}
 		out = prf.Sum(nil)
 		if bytes.Compare(out, expected) != 0 {
-			t.Errorf("d) test-%d: got %x, expected %x", idx, out, expected)
+			t.Errorf("b) test-%d: got %x, expected %x", idx, out, expected)
 		}
 	}
+}
+
+func benchmarkPRF(b *testing.B, key, in, out []byte) {
+	prf, err := NewPRF(key[:])
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		in[0] = byte(i)
+		in[1] = byte(i >> 8)
+		in[2] = byte(i >> 16)
+		in[3] = byte(i >> 24)
+		in[4] = byte(i >> 32)
+		in[5] = byte(i >> 40)
+		in[6] = byte(i >> 48)
+		in[7] = byte(i >> 56)
+
+		prf.Write(in[:])
+		d := prf.Sum(out[:0])
+		_ = d
+		if i == 0 && false {
+			fmt.Printf("out: %x\n", d)
+		}
+	}
+}
+
+func BenchmarkPRF(b *testing.B) {
+	var key [16]byte
+	var in [16]byte
+	var out [16]byte
+
+	benchmarkPRF(b, key[:], in[:], out[:])
+}
+
+func BenchmarkPRFShort(b *testing.B) {
+	var key [16]byte
+	var in [8]byte
+	var out [16]byte
+
+	benchmarkPRF(b, key[:], in[:], out[:])
+}
+
+func BenchmarkPRFLong(b *testing.B) {
+	var key [16]byte
+	var in [32]byte
+	var out [16]byte
+
+	benchmarkPRF(b, key[:], in[:], out[:])
 }

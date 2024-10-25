@@ -63,21 +63,17 @@ func (prf *prfAES) Write(p []byte) (n int, err error) {
 
 // Sum implements hash.Hash.Sum.
 func (prf *prfAES) Sum(b []byte) []byte {
-	_, err := prf.Write(b)
-	if err != nil {
-		panic(err)
-	}
 	if prf.inputOfs > 0 {
 		for i := prf.inputOfs; i < prf.blockSize; i++ {
 			prf.input[i] = 0
 		}
-		_, err = prf.Write(prf.input[prf.inputOfs:])
+		_, err := prf.Write(prf.input[prf.inputOfs:])
 		if err != nil {
 			panic(err)
 		}
 	}
 	prf.Reset()
-	return prf.output
+	return append(b, prf.output...)
 }
 
 // Sum implements hash.Hash.Reset.
