@@ -1,0 +1,58 @@
+
+
+
+
+
+
+Network Working Group                                   Elmer B. Shapiro
+Request for Comment: 4                       Stanford Research Institute
+Category: Informational                                    24 March 1969
+
+
+                           Network Timetable
+
+
+1  (n10) network checkout
+
+2  Installation of communcation gear 8/1/69
+
+   2a  From AT&T and/or BBN need dimensional, power and cabling
+   specifications
+
+   2b  Need to establish SRI desired alternate locations so as to
+   determine maximum telco cable lengths
+
+   2c  Need to establish location and drops on voice coordination
+   circuits
+
+   2d  Need circuit information on voice drops for tie to intercom
+   system
+
+   2e  Need to order and install a.c. power (coordinate with 4b)
+
+   2f  See 16
+
+3  Design and construct host-Imp interface 9/1/69
+
+   3a  Need specifications from BBN
+
+   3b  Develop trial design
+
+   3c  Review with system programmers
+
+   3d  Establish final design
+
+   3e  Build and design hardware
+
+   3f  Debug trial software with hardware loop test
+
+4  Imp installation 9/15/69
+
+   4a  from BBN get dimensional, power and cabling specifications
+
+   4b  SRI orders and installs a.c. power (coordinate with 2e)
+
+
+
+
+                                                                [Page 1]

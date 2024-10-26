@@ -1,0 +1,58 @@
+
+
+
+
+
+
+Network Working Group                                        Bill Duvall
+Request for Comments: 2                                              SRI
+
+
+                            [unknown title]
+
+
+[page 1 missing]
+
+1 LINKS
+
+   1a Control Links
+
+      1a1 Logical link 0 will be a control link between any two HOSTs on
+      the network
+
+         1a1a Only one control link may exist between any two HOSTs on
+         the network. Thus, if there are n HOSTs on the network, there
+         are n-1 control links from each HOST.
+
+      1a2 It will be primarily used for communication between HOSTs for
+      the purposes of:
+
+         1a2a Establishing user links
+
+         1a2b Breaking user links
+
+         1a2c Passing interrupts regarding the status of links and/or
+         programs using the links
+
+         1a2d Monitor communication
+
+      1a3 Imps in the network may automatically trace all messages sent
+      on link 0.
+
+   1b Primary Links
+
+      1b1 A user at a given HOST may have exactly 1 primary link to each
+      of the other HOSTs on the network.
+
+         1b1a The primary link must be the first link established
+         between a HOST user and another HOST.
+
+         1b1b Primary links are global to a user, i.e. a user program
+         may open a primary link, and that link remains open until it is
+         specifically closed.
+
+
+
+
+
+Duvall                                                          [Page 1]

@@ -1,0 +1,58 @@
+
+
+
+
+
+
+Network Working Group                                   Steve Crocker
+Request for Comments: 1                                          UCLA
+                                                         7 April 1969
+
+
+                         Title:   Host Software
+                        Author:   Steve Crocker
+                          Installation:   UCLA
+                          Date:   7 April 1969
+             Network Working Group Request for Comment:   1
+
+
+CONTENTS
+
+INTRODUCTION
+
+  I. A Summary of the IMP Software
+
+     Messages
+
+     Links
+
+     IMP Transmission and Error Checking
+
+     Open Questions on the IMP Software
+
+ II. Some Requirements Upon the Host-to-Host Software
+
+     Simple Use
+
+     Deep Use
+
+     Error Checking
+
+III. The Host Software
+
+     Establishment of a Connection
+
+     High Volume Transmission
+
+     A Summary of Primitives
+
+     Error Checking
+
+     Closer Interaction
+
+     Open Questions
+
+
+
+
+Crocker                                                        [Page 1]

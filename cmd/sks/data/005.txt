@@ -1,0 +1,56 @@
+Network Working Group                                           4691
+RFC-5                                                           Jeff Rulifson
+                                                                June 2, l969
+
+
+
+                                DEL
+
+
+
+:DEL, 02/06/69 1010:58   JFR   ;   .DSN=1; .LSP=0; ['=] AND NOT SP ; ['?];
+dual transmission?
+
+ABSTRACT
+
+   The Decode-Encode Language (DEL) is a machine independent language
+   tailored to two specific computer network tasks:
+
+      accepting input codes from interactive consoles, giving immediate
+      feedback, and packing the resulting information into message
+      packets for network transmissin.
+
+      and accepting message packets from another computer, unpacking
+      them, building trees of display information, and sending other
+      information to the user at his interactive station.
+
+   This is a working document for the evolution of the DEL language.
+   Comments should be made through Jeff Rulifson at SRI.
+
+FORWARD
+
+   The initial ARPA network working group met at SRI on October 25-26,
+   1968.
+
+      It was generally agreed beforehand that the runmning of interactive
+      programs across the network was the first problem that would be
+      faced.
+
+      This group, already in agreement about the underlaying notions of
+      a DEL-like approach, set down some terminology, expectations for
+      DEL programs, and lists of proposed semantic capability.
+
+      At the meeting were Andrews, Baray, Carr, Crocker, Rulifson, and
+      Stoughton.
+
+   A second round of meetings was then held in a piecemeal way.
+
+      Crocker meet with Rulifson at SRI on November 18, 1968.  This
+      resulted in the incorporation of formal co-routines.
+
+      and Stoughton meet with Rulifson at SRI on Decembeer 12, 1968.  It
+      was decided to meet again, as a group, probably at UTAH, in late
+      January 1969.
+
+   The first public release of this paper was at the BBN NET meeting in
+   Cambridge on February 13, 1969.
