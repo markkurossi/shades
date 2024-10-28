@@ -15,9 +15,9 @@ import (
 
 // TSet implements a tuple set (T-Set).
 type TSet struct {
-	tset [][]record
-	kt   []byte
-	prfF *PRF
+	records [][]record
+	kt      []byte
+	prfF    *PRF
 }
 
 // TSetSetup creates the TSet for the database.
@@ -34,8 +34,8 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 	const s int = 8
 
 	tset := &TSet{
-		tset: make([][]record, b),
-		kt:   make([]byte, 16),
+		records: make([][]record, b),
+		kt:      make([]byte, 16),
 	}
 	free := make([]int, b)
 
@@ -87,7 +87,7 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 				label: L,
 				value: value,
 			}
-			tset.tset[b] = append(tset.tset[b], r)
+			tset.records[b] = append(tset.records[b], r)
 		}
 	}
 
@@ -119,7 +119,7 @@ func (tset *TSet) Retrieve(stag []byte) ([]ID, error) {
 
 		b, L, K := tset.hash(ilambda)
 		found := false
-		for _, r := range tset.tset[b] {
+		for _, r := range tset.records[b] {
 			if bytes.Compare(r.label, L) == 0 {
 				found = true
 				copy(value[0:], r.value[:])
@@ -140,7 +140,7 @@ func (tset *TSet) Retrieve(stag []byte) ([]ID, error) {
 func (tset *TSet) hash(data []byte) (int, []byte, []byte) {
 	digest := sha512.Sum512(data)
 	b := int(bo.Uint32(digest[0:4]))
-	return b % len(tset.tset), digest[4 : 4+16], digest[4+16 : 4+16+16+1]
+	return b % len(tset.records), digest[4 : 4+16], digest[4+16 : 4+16+16+1]
 }
 
 type record struct {
