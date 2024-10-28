@@ -12,6 +12,7 @@ import (
 	"unicode"
 )
 
+// Tokenizer implements text tokenization.
 type Tokenizer struct {
 	in        *bufio.Reader
 	cvt       func(r rune) rune
@@ -19,6 +20,9 @@ type Tokenizer struct {
 	C         chan Token
 }
 
+// NewTokenizer creates a new Tokenizer for the input in. The function
+// cvt converts runes to the default case and stopwords define the
+// stopwords to ignore in tokenization.
 func NewTokenizer(in io.Reader, cvt func(r rune) rune,
 	stopwords []string) *Tokenizer {
 
@@ -39,6 +43,7 @@ func NewTokenizer(in io.Reader, cvt func(r rune) rune,
 	return t
 }
 
+// Run tokenizes the input.
 func (t *Tokenizer) Run() {
 	var ofs int
 
@@ -77,6 +82,7 @@ func (t *Tokenizer) Run() {
 	close(t.C)
 }
 
+// Token defines an input token.
 type Token struct {
 	Offset int
 	Data   string

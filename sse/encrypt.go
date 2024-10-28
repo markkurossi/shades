@@ -11,6 +11,7 @@ import (
 	"crypto/cipher"
 )
 
+// NewENC creates a new cipher for the key.
 func NewENC(key []byte) (cipher.Block, error) {
 	return aes.NewCipher(key)
 }
