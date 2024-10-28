@@ -11,14 +11,13 @@ import (
 	"crypto/rand"
 	"crypto/sha512"
 	"fmt"
-	"hash"
 )
 
 // TSet implements a tuple set (T-Set).
 type TSet struct {
 	tset [][]record
 	kt   []byte
-	prfF hash.Hash
+	prfF *PRF
 }
 
 // TSetSetup creates the TSet for the database.
@@ -53,14 +52,10 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 
 	stag := make([]byte, 16)
 	ilambda := make([]byte, 16)
-	var ibuf ID
 
 	for w, t := range T {
 		// Set stag = F(kt, w)
-		stag, err = tset.GetTag([]byte(w), stag[:0])
-		if err != nil {
-			return nil, err
-		}
+		stag = tset.GetTag([]byte(w), stag[:0])
 
 		prff, err := NewPRF(stag[:])
 		if err != nil {
@@ -69,12 +64,7 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 
 		// For each i = 1, ..., |t|, si=t[i]:
 		for i, si := range t {
-			ibuf.PutUint64(uint64(i))
-			_, err := prff.Write(ibuf[:])
-			if err != nil {
-				return nil, err
-			}
-			ilambda = prff.Sum(ilambda[:0])
+			ilambda = prff.Int(uint64(i), ilambda[:0])
 
 			b, L, K := tset.hash(ilambda)
 
@@ -106,12 +96,8 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 
 // GetTag creates the stag for the keyword w and appends it to the
 // argument stag.
-func (tset *TSet) GetTag(w, stag []byte) ([]byte, error) {
-	_, err := tset.prfF.Write(w)
-	if err != nil {
-		return nil, err
-	}
-	return tset.prfF.Sum(stag), nil
+func (tset *TSet) GetTag(w, stag []byte) []byte {
+	return tset.prfF.Data(w, stag)
 }
 
 // Retrieve retrieves all matches of the stag.
@@ -126,16 +112,10 @@ func (tset *TSet) Retrieve(stag []byte) ([]ID, error) {
 	}
 
 	ilambda := make([]byte, 16)
-	var ibuf ID
 	var value [1 + 16]byte
 
 	for i := 0; beta != 0; i++ {
-		ibuf.PutUint64(uint64(i))
-		_, err := prff.Write(ibuf[:])
-		if err != nil {
-			return nil, err
-		}
-		ilambda = prff.Sum(ilambda[:0])
+		ilambda = prff.Int(uint64(i), ilambda[:0])
 
 		b, L, K := tset.hash(ilambda)
 		found := false

@@ -17,11 +17,7 @@ func EDBSetup(ks []byte, db map[string][]int) (map[string][]ID, error) {
 	ke := make([]byte, 16)
 
 	for w, indices := range db {
-		_, err := prf.Write([]byte(w))
-		if err != nil {
-			return nil, err
-		}
-		ke = prf.Sum(ke[:0])
+		ke = prf.Data([]byte(w), ke[:0])
 		enc, err := NewENC(ke)
 		if err != nil {
 			return nil, err

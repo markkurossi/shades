@@ -90,10 +90,7 @@ func main() {
 
 	query := []byte(*q)
 
-	stag, err := tset.GetTag(query, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
+	stag := tset.GetTag(query, nil)
 
 	t, err := tset.Retrieve(stag)
 	if err != nil {
