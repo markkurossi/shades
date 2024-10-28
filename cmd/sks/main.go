@@ -65,10 +65,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = sse.EDBSetup(ks[:], db)
+	T, err := sse.EDBSetup(ks[:], db)
 	if err != nil {
 		log.Fatal(err)
 	}
+	for w, indices := range T {
+		fmt.Printf("T[%s]:\n", w)
+		for idx, i := range indices {
+			fmt.Printf(" %d) %x\n", idx, i)
+		}
+	}
+
 }
 
 var (
