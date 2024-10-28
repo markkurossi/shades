@@ -48,7 +48,12 @@ var stopwords = []string{
 }
 
 func main() {
+	q := flag.String("q", "", "query word")
 	flag.Parse()
+
+	if len(*q) == 0 {
+		log.Fatalf("no query string")
+	}
 
 	for _, f := range flag.Args() {
 		err := indexFile(f)
@@ -69,13 +74,56 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	for w, indices := range T {
-		fmt.Printf("T[%s]:\n", w)
-		for idx, i := range indices {
-			fmt.Printf(" %d) %x\n", idx, i)
+	if false {
+		for w, indices := range T {
+			fmt.Printf("T[%s]:\n", w)
+			for idx, i := range indices {
+				fmt.Printf(" %d) %x\n", idx, i)
+			}
 		}
 	}
+	tset, err := sse.TSetSetup(T)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_ = tset
 
+	query := []byte(*q)
+
+	stag, err := tset.GetTag(query, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	t, err := tset.Retrieve(stag)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	prf, err := sse.NewPRF(ks[:])
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = prf.Write(query)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ke := prf.Sum(nil)
+
+	dec, err := sse.NewENC(ke)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for idx, id := range t {
+		var plain sse.ID
+		dec.Decrypt(plain[:], id[:])
+		index := int(plain.Uint64())
+		if index >= len(sources) {
+			log.Fatalf("index %v out of range\n", index)
+		}
+		fmt.Printf("t[%d]:\t%x\t%v\n", idx, id, sources[index])
+	}
 }
 
 var (
