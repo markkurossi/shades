@@ -17,7 +17,7 @@ import (
 type TSet struct {
 	records [][]record
 	kt      []byte
-	prfF    *PRF
+	prf     *PRF
 }
 
 // TSetSetup creates the TSet for the database.
@@ -43,7 +43,7 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	tset.prfF, err = NewPRF(tset.kt)
+	tset.prf, err = NewPRF(tset.kt)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 // GetTag creates the stag for the keyword w and appends it to the
 // argument stag.
 func (tset *TSet) GetTag(w, stag []byte) []byte {
-	return tset.prfF.Data(w, stag)
+	return tset.prf.Data(w, stag)
 }
 
 // Retrieve retrieves all matches of the stag.
