@@ -48,6 +48,7 @@ var stopwords = []string{
 
 func main() {
 	q := flag.String("q", "", "query word")
+	v := flag.Bool("v", false, "verbose")
 	flag.Parse()
 
 	if len(*q) == 0 {
@@ -60,6 +61,10 @@ func main() {
 			fmt.Printf("failed to parse %s: %s\n", f, err)
 		}
 	}
+
+	fmt.Printf("Indexed %d files\n", len(flag.Args()))
+	fmt.Printf(" - #tokens  : %v\n", numTokens)
+	fmt.Printf(" - #keywords: %v\n", len(db))
 
 	// fmt.Printf("db: %v\n", db)
 
@@ -81,17 +86,22 @@ func main() {
 		log.Fatal(err)
 	}
 
-	for idx, id := range indices {
-		if id >= len(sources) {
-			log.Fatalf("index %v out of range\n", id)
+	fmt.Printf("%d matches\n", len(indices))
+
+	if *v {
+		for idx, id := range indices {
+			if id >= len(sources) {
+				log.Fatalf("index %v out of range\n", id)
+			}
+			fmt.Printf("t[%d]:\t%v\n", idx, sources[id])
 		}
-		fmt.Printf("t[%d]:\t%v\n", idx, sources[id])
 	}
 }
 
 var (
-	sources []string
-	db      = make(map[string][]int)
+	sources   []string
+	db        = make(map[string][]int)
+	numTokens int
 )
 
 func indexFile(name string) error {
@@ -111,6 +121,7 @@ func indexFile(name string) error {
 
 	for token := range tokenizer.C {
 		m[token.Data] = ind
+		numTokens++
 	}
 	for k, v := range m {
 		db[k] = append(db[k], v)

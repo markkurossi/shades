@@ -9,7 +9,6 @@ package sse
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/sha512"
 	"fmt"
 )
 
@@ -18,6 +17,7 @@ type TSet struct {
 	records [][]record
 	kt      []byte
 	prf     *PRF
+	hash    *Hash
 }
 
 // TSetSetup creates the TSet for the database.
@@ -47,6 +47,10 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 	if err != nil {
 		return nil, err
 	}
+	tset.hash, err = NewHash()
+	if err != nil {
+		return nil, err
+	}
 
 	// For every keyword w ∈ W.
 
@@ -66,7 +70,7 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 		for i, si := range t {
 			ilambda = prff.Int(uint64(i), ilambda[:0])
 
-			b, L, K := tset.hash(ilambda)
+			b, L, K := tset.h(ilambda)
 
 			j := free[b]
 			free[b]++
@@ -117,7 +121,7 @@ func (tset *TSet) Retrieve(stag []byte) ([]ID, error) {
 	for i := 0; beta != 0; i++ {
 		ilambda = prff.Int(uint64(i), ilambda[:0])
 
-		b, L, K := tset.hash(ilambda)
+		b, L, K := tset.h(ilambda)
 		found := false
 		for _, r := range tset.records[b] {
 			if bytes.Compare(r.label, L) == 0 {
@@ -137,8 +141,8 @@ func (tset *TSet) Retrieve(stag []byte) ([]ID, error) {
 	return t, nil
 }
 
-func (tset *TSet) hash(data []byte) (int, []byte, []byte) {
-	digest := sha512.Sum512(data)
+func (tset *TSet) h(data []byte) (int, []byte, []byte) {
+	digest := tset.hash.Sum512(data)
 	b := int(bo.Uint32(digest[0:4]))
 	return b % len(tset.records), digest[4 : 4+16], digest[4+16 : 4+16+16+1]
 }
