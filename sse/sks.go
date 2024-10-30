@@ -6,8 +6,16 @@
 
 package sse
 
-// EDBSetup sets up the encrypted database.
-func EDBSetup(ks []byte, db map[string][]int) (map[string][]ID, error) {
+// SKS implements the Single-Keyword SSE Scheme (SKS).
+type SKS struct {
+	ks   []byte
+	prf  *PRF
+	tset *TSet
+}
+
+// SKSSetup sets up the encrypted database for the Single-Keyword SSE
+// Scheme (SKS).
+func SKSSetup(ks []byte, db map[string][]int) (*SKS, error) {
 	prf, err := NewPRF(ks)
 	if err != nil {
 		return nil, err
@@ -32,5 +40,42 @@ func EDBSetup(ks []byte, db map[string][]int) (map[string][]ID, error) {
 		T[w] = t
 	}
 
-	return T, nil
+	tset, err := TSetSetup(T)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SKS{
+		ks:   ks,
+		prf:  prf,
+		tset: tset,
+	}, nil
+}
+
+// Search searches the query and returns a list of matching document
+// indices.
+func (sks *SKS) Search(query []byte) ([]int, error) {
+	stag := sks.tset.GetTag(query, nil)
+
+	t, err := sks.tset.Retrieve(stag)
+	if err != nil {
+		return nil, err
+	}
+
+	ke := sks.prf.Data(query, nil)
+
+	dec, err := NewENC(ke)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []int
+
+	for _, id := range t {
+		var plain ID
+		dec.Decrypt(plain[:], id[:])
+		result = append(result, int(plain.Uint64()))
+	}
+
+	return result, nil
 }

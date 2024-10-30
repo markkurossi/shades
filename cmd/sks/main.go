@@ -8,7 +8,6 @@ package main
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"flag"
 	"fmt"
 	"log"
@@ -70,63 +69,29 @@ func main() {
 		log.Fatal(err)
 	}
 
-	T, err := sse.EDBSetup(ks[:], db)
+	sks, err := sse.SKSSetup(ks[:], db)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if false {
-		for w, indices := range T {
-			fmt.Printf("T[%s]:\n", w)
-			for idx, i := range indices {
-				fmt.Printf(" %d) %x\n", idx, i)
-			}
-		}
-	}
-	tset, err := sse.TSetSetup(T)
-	if err != nil {
-		log.Fatal(err)
-	}
-	_ = tset
 
 	query := []byte(*q)
 
-	stag := tset.GetTag(query, nil)
-
-	t, err := tset.Retrieve(stag)
+	indices, err := sks.Search(query)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	prf, err := sse.NewPRF(ks[:])
-	if err != nil {
-		log.Fatal(err)
-	}
-	_, err = prf.Write(query)
-	if err != nil {
-		log.Fatal(err)
-	}
-	ke := prf.Sum(nil)
-
-	dec, err := sse.NewENC(ke)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for idx, id := range t {
-		var plain sse.ID
-		dec.Decrypt(plain[:], id[:])
-		index := int(plain.Uint64())
-		if index >= len(sources) {
-			log.Fatalf("index %v out of range\n", index)
+	for idx, id := range indices {
+		if id >= len(sources) {
+			log.Fatalf("index %v out of range\n", id)
 		}
-		fmt.Printf("t[%d]:\t%x\t%v\n", idx, id, sources[index])
+		fmt.Printf("t[%d]:\t%v\n", idx, sources[id])
 	}
 }
 
 var (
 	sources []string
 	db      = make(map[string][]int)
-	bo      = binary.BigEndian
 )
 
 func indexFile(name string) error {
