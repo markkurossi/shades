@@ -27,11 +27,11 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 		count += len(t)
 	}
 
-	b := count / 2
+	b := count / 4
 	if b == 0 {
 		b = count
 	}
-	const s int = 8
+	const s int = 32
 
 	tset := &TSet{
 		records: make([][]record, b),

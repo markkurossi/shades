@@ -7,11 +7,12 @@
 package main
 
 import (
-	"crypto/rand"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"regexp"
+	"time"
 	"unicode"
 
 	"github.com/markkurossi/shades/fti"
@@ -55,38 +56,49 @@ func main() {
 		log.Fatalf("no query string")
 	}
 
+	start := time.Now()
+
 	for _, f := range flag.Args() {
 		err := indexFile(f)
 		if err != nil {
 			fmt.Printf("failed to parse %s: %s\n", f, err)
 		}
 	}
+	now := time.Now()
 
-	fmt.Printf("Indexed %d files\n", len(flag.Args()))
+	fmt.Printf("Indexed %d files in %s\n", len(flag.Args()), now.Sub(start))
 	fmt.Printf(" - #tokens  : %v\n", numTokens)
 	fmt.Printf(" - #keywords: %v\n", len(db))
 
+	start = now
+
 	// fmt.Printf("db: %v\n", db)
+	var setup sse.Setup
+	if false {
+		setup = sse.SKSSetup
+	} else {
+		setup = sse.BXTSetup
+	}
 
-	var ks [16]byte
-	_, err := rand.Read(ks[:])
+	impl, err := setup(db)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	sks, err := sse.SKSSetup(ks[:], db)
+	now = time.Now()
+	fmt.Printf("EDB Setup in %s\n", now.Sub(start))
+	start = now
+
+	query := regexp.MustCompilePOSIX("[[:space:]]+").Split(*q, -1)
+	fmt.Printf("query: %v\n", query)
+
+	indices, err := impl.Search(query)
 	if err != nil {
 		log.Fatal(err)
 	}
+	now = time.Now()
 
-	query := []byte(*q)
-
-	indices, err := sks.Search(query)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("%d matches\n", len(indices))
+	fmt.Printf("%d matches in %s\n", len(indices), now.Sub(start))
 
 	if *v {
 		for idx, id := range indices {

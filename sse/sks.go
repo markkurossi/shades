@@ -6,17 +6,28 @@
 
 package sse
 
+import (
+	"crypto/rand"
+	"fmt"
+)
+
 // SKS implements the Single-Keyword SSE Scheme (SKS).
 type SKS struct {
-	ks   []byte
-	prf  *PRF
-	tset *TSet
+	ks    []byte
+	prfKS *PRF
+	tset  *TSet
 }
 
 // SKSSetup sets up the encrypted database for the Single-Keyword SSE
 // Scheme (SKS).
-func SKSSetup(ks []byte, db map[string][]int) (*SKS, error) {
-	prf, err := NewPRF(ks)
+func SKSSetup(db map[string][]int) (SSE, error) {
+	var ks [16]byte
+	_, err := rand.Read(ks[:])
+	if err != nil {
+		return nil, err
+	}
+
+	prf, err := NewPRF(ks[:])
 	if err != nil {
 		return nil, err
 	}
@@ -46,24 +57,29 @@ func SKSSetup(ks []byte, db map[string][]int) (*SKS, error) {
 	}
 
 	return &SKS{
-		ks:   ks,
-		prf:  prf,
-		tset: tset,
+		ks:    ks[:],
+		prfKS: prf,
+		tset:  tset,
 	}, nil
 }
 
 // Search searches the query and returns a list of matching document
 // indices.
-func (sks *SKS) Search(query []byte) ([]int, error) {
-	stag := sks.tset.GetTag(query, nil)
+func (sks *SKS) Search(query []string) ([]int, error) {
+	if len(query) != 1 {
+		return nil, fmt.Errorf("SKS supports only single word queries")
+	}
+
+	q := []byte(query[0])
+
+	stag := sks.tset.GetTag(q, nil)
 
 	t, err := sks.tset.Retrieve(stag)
 	if err != nil {
 		return nil, err
 	}
 
-	ke := sks.prf.Data(query, nil)
-
+	ke := sks.prfKS.Data(q, nil)
 	dec, err := NewENC(ke)
 	if err != nil {
 		return nil, err
