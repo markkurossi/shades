@@ -7,10 +7,8 @@
 package sse
 
 import (
-	"bytes"
 	"crypto/rand"
 	"fmt"
-	"sort"
 )
 
 // BXT implements the Basic Cross-Tags Protocol (BXT).
@@ -20,7 +18,7 @@ type BXT struct {
 	prfKs *PRF
 	prfKx *PRF
 	tset  *TSet
-	xset  [][]byte
+	xset  *XSet
 }
 
 // BXTSetup sets up the encrypted database for the Basic Cross-Tags
@@ -47,7 +45,12 @@ func BXTSetup(db map[string][]int) (SSE, error) {
 	}
 
 	T := make(map[string][]ID)
-	var xset [][]byte // XXX linear lookup
+
+	var numTokens int
+	for _, w := range db {
+		numTokens += len(w)
+	}
+	xset := NewXSet(numTokens)
 
 	ke := make([]byte, 16)
 	xtrap := make([]byte, 16)
@@ -69,12 +72,12 @@ func BXTSetup(db map[string][]int) (SSE, error) {
 			enc.Encrypt(e[:], i[:])
 			t = append(t, e)
 
-			f, err := NewPRF(xtrap[:])
+			f, err := NewPRF(xtrap)
 			if err != nil {
 				return nil, err
 			}
 			xtag := f.Data(i[:], nil)
-			xset = append(xset, xtag)
+			xset.Add(xtag)
 		}
 		T[w] = t
 	}
@@ -83,9 +86,6 @@ func BXTSetup(db map[string][]int) (SSE, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(xset, func(i, j int) bool {
-		return bytes.Compare(xset[i], xset[j]) == -1
-	})
 
 	return &BXT{
 		ks:    ks[:],
@@ -139,20 +139,8 @@ func (bxt *BXT) Search(query []string) ([]int, error) {
 				return nil, err
 			}
 			xtag := f.Data(plain[:], nil)
-			if false {
-				for _, xs := range bxt.xset {
-					if bytes.Compare(xtag[:], xs) == 0 {
-						found++
-						break
-					}
-				}
-			} else {
-				_, was := sort.Find(len(bxt.xset), func(j int) int {
-					return bytes.Compare(xtag[:], bxt.xset[j])
-				})
-				if was {
-					found++
-				}
+			if bxt.xset.Lookup(xtag) {
+				found++
 			}
 		}
 		if found == len(query) {
