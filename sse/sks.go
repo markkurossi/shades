@@ -9,12 +9,14 @@ package sse
 import (
 	"crypto/rand"
 	"fmt"
+
+	"github.com/markkurossi/shades/crypto"
 )
 
 // SKS implements the Single-Keyword SSE Scheme (SKS).
 type SKS struct {
 	ks    []byte
-	prfKS *PRF
+	prfKS *crypto.PRF
 	tset  *TSet
 }
 
@@ -27,7 +29,7 @@ func SKSSetup(db map[string][]int) (SSE, error) {
 		return nil, err
 	}
 
-	prf, err := NewPRF(ks[:])
+	prf, err := crypto.NewPRF(ks[:])
 	if err != nil {
 		return nil, err
 	}

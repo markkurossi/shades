@@ -4,11 +4,12 @@
 // All rights reserved.
 //
 
-package sse
+package crypto
 
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"encoding/binary"
 	"hash"
 )
 
@@ -79,9 +80,9 @@ func (prf *PRF) Sum(b []byte) []byte {
 
 // Int computes random value for i and appends it to b.
 func (prf *PRF) Int(i uint64, b []byte) []byte {
-	var buf ID
+	var buf [aes.BlockSize]byte
 
-	buf.PutUint64(uint64(i))
+	binary.BigEndian.PutUint64(buf[0:], i)
 	_, err := prf.Write(buf[:])
 	if err != nil {
 		panic(err)

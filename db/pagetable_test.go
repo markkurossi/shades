@@ -7,6 +7,7 @@
 package db
 
 import (
+	"os"
 	"testing"
 )
 
@@ -63,4 +64,26 @@ func TestLogicalID(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestPageTableGet(t *testing.T) {
+	// XXX syscall.O_DIRECT
+	f, err := os.OpenFile(",test.shades", os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := NewDB(NewParams(), f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.pt.Init()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pid, err := db.pt.Get(nil, NewLogicalID(0, 0, uint64(db.pt.numPages)))
+	if err == nil {
+		t.Fatalf("got invalid page")
+	}
+	_ = pid
 }

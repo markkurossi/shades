@@ -9,14 +9,16 @@ package sse
 import (
 	"crypto/rand"
 	"fmt"
+
+	"github.com/markkurossi/shades/crypto"
 )
 
 // BXT implements the Basic Cross-Tags Protocol (BXT).
 type BXT struct {
 	ks    []byte
 	kx    []byte
-	prfKs *PRF
-	prfKx *PRF
+	prfKs *crypto.PRF
+	prfKx *crypto.PRF
 	tset  *TSet
 	xset  *XSet
 }
@@ -29,7 +31,7 @@ func BXTSetup(db map[string][]int) (SSE, error) {
 	if err != nil {
 		return nil, err
 	}
-	prfKs, err := NewPRF(ks[:])
+	prfKs, err := crypto.NewPRF(ks[:])
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +41,7 @@ func BXTSetup(db map[string][]int) (SSE, error) {
 	if err != nil {
 		return nil, err
 	}
-	prfKx, err := NewPRF(kx[:])
+	prfKx, err := crypto.NewPRF(kx[:])
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +74,7 @@ func BXTSetup(db map[string][]int) (SSE, error) {
 			enc.Encrypt(e[:], i[:])
 			t = append(t, e)
 
-			f, err := NewPRF(xtrap)
+			f, err := crypto.NewPRF(xtrap)
 			if err != nil {
 				return nil, err
 			}
@@ -134,7 +136,7 @@ func (bxt *BXT) Search(query []string) ([]int, error) {
 		found := 1
 
 		for i := 1; i < len(query); i++ {
-			f, err := NewPRF(xtraps[i-1])
+			f, err := crypto.NewPRF(xtraps[i-1])
 			if err != nil {
 				return nil, err
 			}

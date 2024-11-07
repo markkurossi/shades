@@ -4,7 +4,7 @@
 // All rights reserved.
 //
 
-package sse
+package crypto
 
 import (
 	"crypto/sha512"

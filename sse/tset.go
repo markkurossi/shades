@@ -10,14 +10,16 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+
+	"github.com/markkurossi/shades/crypto"
 )
 
 // TSet implements a tuple set (T-Set).
 type TSet struct {
 	records [][]record
 	kt      []byte
-	prf     *PRF
-	hash    *Hash
+	prf     *crypto.PRF
+	hash    *crypto.Hash
 }
 
 // TSetSetup creates the TSet for the database.
@@ -43,11 +45,11 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	tset.prf, err = NewPRF(tset.kt)
+	tset.prf, err = crypto.NewPRF(tset.kt)
 	if err != nil {
 		return nil, err
 	}
-	tset.hash, err = NewHash()
+	tset.hash, err = crypto.NewHash()
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +63,7 @@ func TSetSetup(T map[string][]ID) (*TSet, error) {
 		// Set stag = F(kt, w)
 		stag = tset.GetTag([]byte(w), stag[:0])
 
-		prff, err := NewPRF(stag[:])
+		prff, err := crypto.NewPRF(stag[:])
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +112,7 @@ func (tset *TSet) Retrieve(stag []byte) ([]ID, error) {
 	var t []ID
 	var beta byte = 0xff
 
-	prff, err := NewPRF(stag)
+	prff, err := crypto.NewPRF(stag)
 	if err != nil {
 		return nil, err
 	}
