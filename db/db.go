@@ -7,6 +7,7 @@
 package db
 
 import (
+	"fmt"
 	"os"
 )
 
@@ -33,6 +34,14 @@ type DB struct {
 
 // Create creates a new database with the parameters and I/O device.
 func Create(params Params, device Device) (*DB, error) {
+	// Check parameters.
+	var pageSize int
+	for pageSize = 1024; pageSize < params.PageSize; pageSize *= 2 {
+	}
+	if pageSize != params.PageSize {
+		return nil, fmt.Errorf("page size must be power of 2 and >= 1024")
+	}
+
 	db, err := newDB(params, device)
 	if err != nil {
 		return nil, err
@@ -46,6 +55,29 @@ func Create(params Params, device Device) (*DB, error) {
 
 // Open opens the database from the I/O device.
 func Open(params Params, device Device) (*DB, error) {
+	pt, err := NewPageTable(nil)
+	if err != nil {
+		return nil, err
+	}
+	// Open the root block and read database page size.
+	for pageSize := 1024; pageSize <= 1024*1024; pageSize *= 2 {
+		buf := make([]byte, pageSize)
+		_, err := device.ReadAt(buf, 0)
+		if err != nil {
+			return nil, err
+		}
+		err = pt.parseRootBlock(buf)
+		if err == nil {
+			// Parsed the existing root pointer. Use the generation
+			// time values and open the database.
+			params.PageSize = int(pt.root.PageSize)
+			return open(params, device)
+		}
+	}
+	return nil, fmt.Errorf("not a valid shades DB file")
+}
+
+func open(params Params, device Device) (*DB, error) {
 	db, err := newDB(params, device)
 	if err != nil {
 		return nil, err

@@ -11,7 +11,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/markkurossi/shades/crypto"
@@ -117,6 +116,8 @@ const (
 	RootPtrOfsTimestamp  = 40
 	RootPtrOfsGeneration = 48
 	RootPtrOfsUserData   = 56
+	RootPtrOfsChecksum   = 64
+	RootPtrSize          = 80
 )
 
 // RootPtrPadding defines the padding data, which is used to pad the
@@ -149,11 +150,6 @@ func NewPageTable(db *DB) (*PageTable, error) {
 		return nil, err
 	}
 
-	pt.rootBlock, err = db.cache.Get(RootBlock)
-	if err != nil {
-		return nil, err
-	}
-
 	return pt, nil
 }
 
@@ -161,6 +157,7 @@ func NewPageTable(db *DB) (*PageTable, error) {
 func (pt *PageTable) Init() error {
 	pt.root.Magic = RootPtrMagic
 	pt.root.Depth = 1
+	pt.root.PageSize = uint32(pt.db.params.PageSize)
 	pt.root.PageTable = NewPhysicalID(0, 1)
 	pt.root.Freelist = 0
 	pt.root.Generation = 1
@@ -188,7 +185,14 @@ func (pt *PageTable) Init() error {
 
 // Open reads the page table table from the device.
 func (pt *PageTable) Open() error {
-	err := pt.parseRootBlock()
+	var err error
+
+	pt.rootBlock, err = pt.db.cache.Get(RootBlock)
+	if err != nil {
+		return err
+	}
+
+	err = pt.parseRootBlock(pt.rootBlock.Read())
 	if err != nil {
 		return err
 	}
@@ -211,34 +215,30 @@ func (pt *PageTable) formatRootBlock(buf []byte) {
 	bo.PutUint64(buf[RootPtrOfsGeneration:], pt.root.Generation)
 	bo.PutUint64(buf[RootPtrOfsUserData:], pt.root.UserData)
 
-	pt.hash.Data(buf[0:64], buf[:64])
+	pt.hash.Data(buf[0:RootPtrOfsChecksum], buf[:RootPtrOfsChecksum])
 
-	var i int
-	for i = 80; i+80 < pt.db.params.PageSize; i += 80 {
-		copy(buf[i:], buf[0:80])
+	var i int = RootPtrSize
+	for ; i+RootPtrSize < pt.db.params.PageSize; i += RootPtrSize {
+		copy(buf[i:], buf[0:RootPtrSize])
 	}
 	for ; i < pt.db.params.PageSize; i++ {
 		buf[i] = byte(RootPtrPadding[i%len(RootPtrPadding)])
 	}
+}
+
+func (pt *PageTable) parseRootBlock(buf []byte) error {
+	var generation uint64
 
 	if false {
 		fmt.Printf("RootBlock:\n%s", hex.Dump(buf))
 	}
-}
 
-func (pt *PageTable) parseRootBlock() error {
-	var generation uint64
-
-	buf := pt.rootBlock.Read()
-
-	fmt.Printf("RootBlock:\n%s", hex.Dump(buf))
-
-	for i := 0; i+80 < len(buf); i += 80 {
-		gen := bo.Uint64(buf[i+48:])
+	for i := 0; i+RootPtrSize < len(buf); i += RootPtrSize {
+		gen := bo.Uint64(buf[i+RootPtrOfsGeneration:])
 		if gen <= generation {
 			continue
 		}
-		rp, err := pt.parseRootPointer(buf[i : i+80])
+		rp, err := pt.parseRootPointer(buf[i : i+RootPtrSize])
 		if err != nil {
 			fmt.Printf("parseRootPointer: %v\n", err)
 			continue
@@ -265,8 +265,8 @@ func (pt *PageTable) init() {
 func (pt *PageTable) parseRootPointer(buf []byte) (RootPointer, error) {
 	var checksum [16]byte
 
-	pt.hash.Data(buf[0:64], checksum[:0])
-	if bytes.Compare(checksum[:], buf[64:]) != 0 {
+	pt.hash.Data(buf[0:RootPtrOfsChecksum], checksum[:0])
+	if bytes.Compare(checksum[:], buf[RootPtrOfsChecksum:]) != 0 {
 		return RootPointer{}, fmt.Errorf("invalid root pointer checksum")
 	}
 	return RootPointer{
@@ -361,8 +361,6 @@ func (rp RootPointer) String() string {
 	row = tab.Row()
 	row.Column("UserData")
 	row.Column(fmt.Sprintf("%v", rp.UserData))
-
-	tab.Print(os.Stdout)
 
 	return tab.String()
 }
