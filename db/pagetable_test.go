@@ -72,7 +72,9 @@ func TestPageTableGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db, err := NewDB(NewParams(), f)
+	params := NewParams()
+
+	db, err := newDB(params, f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,4 +88,10 @@ func TestPageTableGet(t *testing.T) {
 		t.Fatalf("got invalid page")
 	}
 	_ = pid
+
+	db2, err := Open(params, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = db2
 }

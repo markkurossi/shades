@@ -7,12 +7,15 @@
 package db
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/markkurossi/shades/crypto"
+	"github.com/markkurossi/tabulate"
 )
 
 var (
@@ -102,6 +105,20 @@ const (
 	RootPtrMagic = uint64(0x7b5368616465737d)
 )
 
+// Root pointer offsets.
+const (
+	RootPtrOfsMagic      = 0
+	RootPtrOfsFlags      = 8
+	RootPtrOfsDepth      = 10
+	RootPtrOfsPageSize   = 12
+	RootPtrOfsPageTable  = 16
+	RootPtrOfsFreelist   = 24
+	RootPtrOfsSnapshots  = 32
+	RootPtrOfsTimestamp  = 40
+	RootPtrOfsGeneration = 48
+	RootPtrOfsUserData   = 56
+)
+
 // RootPtrPadding defines the padding data, which is used to pad the
 // root block into page boundary.
 var RootPtrPadding = []rune("mtr@iki.fi~")
@@ -111,15 +128,11 @@ var RootPtrPadding = []rune("mtr@iki.fi~")
 // ObjectID fields are not stored in the page table; instead, they
 // must be managed by higher-level objects and data structures.
 type PageTable struct {
-	db         *DB
-	perPage    int
-	depth      int
-	numPages   int
-	root       PhysicalID
-	freelist   PhysicalID
-	generation uint64
-	rootBlock  *PageRef
-	hash       *crypto.PRF
+	db        *DB
+	numPages  int
+	root      RootPointer
+	rootBlock *PageRef
+	hash      *crypto.PRF
 }
 
 // NewPageTable creates a new page table for the database.
@@ -127,8 +140,7 @@ func NewPageTable(db *DB) (*PageTable, error) {
 	var err error
 
 	pt := &PageTable{
-		db:      db,
-		perPage: db.params.PageSize / 8,
+		db: db,
 	}
 
 	var hashKey [16]byte
@@ -136,8 +148,6 @@ func NewPageTable(db *DB) (*PageTable, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	pt.setDepth(1)
 
 	pt.rootBlock, err = db.cache.Get(RootBlock)
 	if err != nil {
@@ -147,33 +157,59 @@ func NewPageTable(db *DB) (*PageTable, error) {
 	return pt, nil
 }
 
-func (pt *PageTable) setDepth(depth int) {
-	pt.depth = depth
-	pt.numPages = 1
-	for ; depth > 0; depth-- {
-		pt.numPages *= pt.perPage
-	}
-}
-
 // Init initializes a new page table for the database.
 func (pt *PageTable) Init() error {
-	pt.formatRootBlock()
-	return pt.rootBlock.flush()
+	pt.root.Magic = RootPtrMagic
+	pt.root.Depth = 1
+	pt.root.PageTable = NewPhysicalID(0, 1)
+	pt.root.Freelist = 0
+	pt.root.Generation = 1
+
+	pt.init()
+
+	buf := make([]byte, pt.db.params.PageSize)
+
+	pt.formatRootBlock(buf)
+	_, err := pt.db.device.WriteAt(buf, 0)
+	if err != nil {
+		return err
+	}
+	err = pt.db.device.Sync()
+	if err != nil {
+		return err
+	}
+	pt.rootBlock, err = pt.db.cache.Get(RootBlock)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (pt *PageTable) formatRootBlock() {
-	buf := pt.rootBlock.Data()
-	now := time.Now()
+// Open reads the page table table from the device.
+func (pt *PageTable) Open() error {
+	err := pt.parseRootBlock()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (pt *PageTable) formatRootBlock(buf []byte) {
+
+	pt.root.Timestamp = uint64(time.Now().UnixNano())
 
 	// Format the first root pointer.
-	bo.PutUint64(buf[0:], RootPtrMagic)
-	bo.PutUint64(buf[8:], 0)
-	bo.PutUint64(buf[16:], uint64(pt.root))
-	bo.PutUint64(buf[24:], uint64(pt.freelist))
-	bo.PutUint64(buf[32:], 0) // Snapshots
-	bo.PutUint64(buf[40:], uint64(now.UnixNano()))
-	bo.PutUint64(buf[48:], pt.generation)
-	bo.PutUint64(buf[56:], 0) // UserData
+	bo.PutUint64(buf[RootPtrOfsMagic:], pt.root.Magic)
+	bo.PutUint16(buf[RootPtrOfsFlags:], pt.root.Flags)
+	bo.PutUint16(buf[RootPtrOfsDepth:], pt.root.Depth)
+	bo.PutUint32(buf[RootPtrOfsPageSize:], pt.root.PageSize)
+	bo.PutUint64(buf[RootPtrOfsPageTable:], uint64(pt.root.PageTable))
+	bo.PutUint64(buf[RootPtrOfsFreelist:], uint64(pt.root.Freelist))
+	bo.PutUint64(buf[RootPtrOfsSnapshots:], uint64(pt.root.Snapshots))
+	bo.PutUint64(buf[RootPtrOfsTimestamp:], pt.root.Timestamp)
+	bo.PutUint64(buf[RootPtrOfsGeneration:], pt.root.Generation)
+	bo.PutUint64(buf[RootPtrOfsUserData:], pt.root.UserData)
 
 	pt.hash.Data(buf[0:64], buf[:64])
 
@@ -188,6 +224,63 @@ func (pt *PageTable) formatRootBlock() {
 	if false {
 		fmt.Printf("RootBlock:\n%s", hex.Dump(buf))
 	}
+}
+
+func (pt *PageTable) parseRootBlock() error {
+	var generation uint64
+
+	buf := pt.rootBlock.Read()
+
+	fmt.Printf("RootBlock:\n%s", hex.Dump(buf))
+
+	for i := 0; i+80 < len(buf); i += 80 {
+		gen := bo.Uint64(buf[i+48:])
+		if gen <= generation {
+			continue
+		}
+		rp, err := pt.parseRootPointer(buf[i : i+80])
+		if err != nil {
+			fmt.Printf("parseRootPointer: %v\n", err)
+			continue
+		}
+		pt.root = rp
+	}
+
+	fmt.Printf("%v\n", pt.root)
+	pt.init()
+
+	return nil
+}
+
+func (pt *PageTable) init() {
+	pt.numPages = 1
+
+	perPage := int(pt.root.PageSize / 8)
+
+	for depth := pt.root.Depth; depth > 0; depth-- {
+		pt.numPages *= perPage
+	}
+}
+
+func (pt *PageTable) parseRootPointer(buf []byte) (RootPointer, error) {
+	var checksum [16]byte
+
+	pt.hash.Data(buf[0:64], checksum[:0])
+	if bytes.Compare(checksum[:], buf[64:]) != 0 {
+		return RootPointer{}, fmt.Errorf("invalid root pointer checksum")
+	}
+	return RootPointer{
+		Magic:      bo.Uint64(buf[RootPtrOfsMagic:]),
+		Flags:      bo.Uint16(buf[RootPtrOfsFlags:]),
+		Depth:      bo.Uint16(buf[RootPtrOfsDepth:]),
+		PageSize:   bo.Uint32(buf[RootPtrOfsPageSize:]),
+		PageTable:  PhysicalID(bo.Uint64(buf[RootPtrOfsPageTable:])),
+		Freelist:   PhysicalID(bo.Uint64(buf[RootPtrOfsFreelist:])),
+		Snapshots:  PhysicalID(bo.Uint64(buf[RootPtrOfsSnapshots:])),
+		Timestamp:  bo.Uint64(buf[RootPtrOfsTimestamp:]),
+		Generation: bo.Uint64(buf[RootPtrOfsGeneration:]),
+		UserData:   bo.Uint64(buf[RootPtrOfsUserData:]),
+	}, nil
 }
 
 // Get maps the logical ID to its current physical ID.
@@ -212,7 +305,9 @@ func (pt *PageTable) Set(tr *Transaction, id LogicalID, pid PhysicalID) error {
 // data. It is written atomically to the first storage page.
 type RootPointer struct {
 	Magic      uint64
-	Flags      uint64
+	Flags      uint16
+	Depth      uint16
+	PageSize   uint32
 	PageTable  PhysicalID
 	Freelist   PhysicalID
 	Snapshots  PhysicalID
@@ -220,4 +315,54 @@ type RootPointer struct {
 	Generation uint64
 	UserData   uint64
 	Checksum   [16]byte
+}
+
+func (rp RootPointer) String() string {
+	tab := tabulate.New(tabulate.UnicodeLight)
+	tab.Header("Field")
+	tab.Header("Value").SetAlign(tabulate.MR)
+
+	row := tab.Row()
+	row.Column("Magic")
+	row.Column(fmt.Sprintf("%x", rp.Magic))
+
+	row = tab.Row()
+	row.Column("Flags")
+	row.Column(fmt.Sprintf("%016b", rp.Flags))
+
+	row = tab.Row()
+	row.Column("Depth")
+	row.Column(fmt.Sprintf("%v", rp.Depth))
+
+	row = tab.Row()
+	row.Column("PageSize")
+	row.Column(fmt.Sprintf("%v", rp.PageSize))
+
+	row = tab.Row()
+	row.Column("PageTable")
+	row.Column(fmt.Sprintf("%v", rp.PageTable))
+
+	row = tab.Row()
+	row.Column("Freelist")
+	row.Column(fmt.Sprintf("%v", rp.Freelist))
+
+	row = tab.Row()
+	row.Column("Snapshots")
+	row.Column(fmt.Sprintf("%v", rp.Snapshots))
+
+	row = tab.Row()
+	row.Column("Timestamp")
+	row.Column(fmt.Sprintf("%v", rp.Timestamp))
+
+	row = tab.Row()
+	row.Column("Generation")
+	row.Column(fmt.Sprintf("%v", rp.Generation))
+
+	row = tab.Row()
+	row.Column("UserData")
+	row.Column(fmt.Sprintf("%v", rp.UserData))
+
+	tab.Print(os.Stdout)
+
+	return tab.String()
 }

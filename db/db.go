@@ -6,6 +6,10 @@
 
 package db
 
+import (
+	"os"
+)
+
 // Device implements an I/O device.
 type Device interface {
 	Close() error
@@ -13,6 +17,11 @@ type Device interface {
 	Sync() error
 	WriteAt(b []byte, off int64) (n int, err error)
 }
+
+var (
+	_ Device = &os.File{}
+	_ Device = &MemDevice{}
+)
 
 // DB implements the Shades database.
 type DB struct {
@@ -22,8 +31,33 @@ type DB struct {
 	cache  *Cache
 }
 
-// NewDB creates a new database with the parameters and I/O device.
-func NewDB(params Params, device Device) (*DB, error) {
+// Create creates a new database with the parameters and I/O device.
+func Create(params Params, device Device) (*DB, error) {
+	db, err := newDB(params, device)
+	if err != nil {
+		return nil, err
+	}
+	err = db.pt.Init()
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+// Open opens the database from the I/O device.
+func Open(params Params, device Device) (*DB, error) {
+	db, err := newDB(params, device)
+	if err != nil {
+		return nil, err
+	}
+	err = db.pt.Open()
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+func newDB(params Params, device Device) (*DB, error) {
 	var err error
 
 	db := &DB{

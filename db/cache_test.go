@@ -11,7 +11,7 @@ import (
 )
 
 func TestCache(t *testing.T) {
-	db, err := NewDB(NewParams(), nil)
+	db, err := newDB(NewParams(), &MemDevice{})
 	if err != nil {
 		t.Fatal(err)
 	}
