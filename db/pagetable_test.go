@@ -89,6 +89,7 @@ func TestPageTableGet(t *testing.T) {
 	}
 	_ = pid
 
+	params.PageSize = 1024
 	db2, err := Open(params, f)
 	if err != nil {
 		t.Fatal(err)
