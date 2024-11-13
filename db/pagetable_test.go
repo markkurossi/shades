@@ -7,6 +7,7 @@
 package db
 
 import (
+	"math/rand"
 	"os"
 	"testing"
 )
@@ -67,14 +68,21 @@ func TestLogicalID(t *testing.T) {
 }
 
 func TestPageTableGet(t *testing.T) {
-	// XXX syscall.O_DIRECT
-	f, err := os.OpenFile(",test.shades", os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		t.Fatal(err)
+	var device Device
+	var err error
+
+	if false {
+		// XXX syscall.O_DIRECT
+		device, err = os.OpenFile(",test.shades", os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		device = NewMemDevice(1024 * 1024)
 	}
 	params := NewParams()
 
-	db, err := newDB(params, f)
+	db, err := newDB(params, device)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,9 +98,23 @@ func TestPageTableGet(t *testing.T) {
 	_ = pid
 
 	params.PageSize = 1024
-	db2, err := Open(params, f)
+	_, err = Open(params, device)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = db2
+
+	// Corrupt n-1 bytes in the root block.
+	dev, ok := device.(*MemDevice)
+	if ok {
+		params = NewParams()
+		count := params.PageSize/RootPtrSize - 1
+		for i := 0; i < count; i++ {
+			idx := rand.Int() % params.PageSize
+			dev.buf[idx]++
+		}
+		_, err = Open(params, device)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }

@@ -227,23 +227,23 @@ func (pt *PageTable) formatRootBlock(buf []byte) {
 }
 
 func (pt *PageTable) parseRootBlock(buf []byte) error {
-	var generation uint64
-
 	if false {
 		fmt.Printf("RootBlock:\n%s", hex.Dump(buf))
 	}
 
 	for i := 0; i+RootPtrSize < len(buf); i += RootPtrSize {
 		gen := bo.Uint64(buf[i+RootPtrOfsGeneration:])
-		if gen <= generation {
+		if gen <= pt.root.Generation {
 			continue
 		}
 		rp, err := pt.parseRootPointer(buf[i : i+RootPtrSize])
 		if err != nil {
-			fmt.Printf("parseRootPointer: %v\n", err)
 			continue
 		}
 		pt.root = rp
+	}
+	if pt.root.Generation == 0 {
+		return fmt.Errorf("no valid root pointer found")
 	}
 
 	fmt.Printf("%v\n", pt.root)
