@@ -106,18 +106,20 @@ const (
 
 // Root pointer offsets.
 const (
-	RootPtrOfsMagic      = 0
-	RootPtrOfsFlags      = 8
-	RootPtrOfsDepth      = 10
-	RootPtrOfsPageSize   = 12
-	RootPtrOfsPageTable  = 16
-	RootPtrOfsFreelist   = 24
-	RootPtrOfsSnapshots  = 32
-	RootPtrOfsTimestamp  = 40
-	RootPtrOfsGeneration = 48
-	RootPtrOfsUserData   = 56
-	RootPtrOfsChecksum   = 64
-	RootPtrSize          = 80
+	RootPtrOfsMagic       = 0
+	RootPtrOfsFlags       = 8
+	RootPtrOfsDepth       = 10
+	RootPtrOfsPageSize    = 12
+	RootPtrOfsTimestamp   = 16
+	RootPtrOfsGeneration  = 24
+	RootPtrOfsNextPhysial = 32
+	RootPtrOfsNextLogical = 40
+	RootPtrOfsPageTable   = 48
+	RootPtrOfsFreelist    = 56
+	RootPtrOfsSnapshots   = 64
+	RootPtrOfsUserData    = 72
+	RootPtrOfsChecksum    = 80
+	RootPtrSize           = 96
 )
 
 // RootPtrPadding defines the padding data, which is used to pad the
@@ -158,9 +160,11 @@ func (pt *PageTable) Init() error {
 	pt.root.Magic = RootPtrMagic
 	pt.root.Depth = 1
 	pt.root.PageSize = uint32(pt.db.params.PageSize)
+	pt.root.Generation = 1
+	pt.root.NextPhysical = 2 // 0=RootBlock, 1=PageTable
+	pt.root.NextLogical = 1  // 0 is reserved for unallocated pages
 	pt.root.PageTable = NewPhysicalID(0, 1)
 	pt.root.Freelist = 0
-	pt.root.Generation = 1
 
 	pt.init()
 
@@ -208,11 +212,13 @@ func (pt *PageTable) formatRootBlock(buf []byte) {
 	bo.PutUint16(buf[RootPtrOfsFlags:], pt.root.Flags)
 	bo.PutUint16(buf[RootPtrOfsDepth:], pt.root.Depth)
 	bo.PutUint32(buf[RootPtrOfsPageSize:], pt.root.PageSize)
+	bo.PutUint64(buf[RootPtrOfsTimestamp:], pt.root.Timestamp)
+	bo.PutUint64(buf[RootPtrOfsGeneration:], pt.root.Generation)
+	bo.PutUint64(buf[RootPtrOfsNextPhysial:], pt.root.NextPhysical)
+	bo.PutUint64(buf[RootPtrOfsNextLogical:], pt.root.NextLogical)
 	bo.PutUint64(buf[RootPtrOfsPageTable:], uint64(pt.root.PageTable))
 	bo.PutUint64(buf[RootPtrOfsFreelist:], uint64(pt.root.Freelist))
 	bo.PutUint64(buf[RootPtrOfsSnapshots:], uint64(pt.root.Snapshots))
-	bo.PutUint64(buf[RootPtrOfsTimestamp:], pt.root.Timestamp)
-	bo.PutUint64(buf[RootPtrOfsGeneration:], pt.root.Generation)
 	bo.PutUint64(buf[RootPtrOfsUserData:], pt.root.UserData)
 
 	pt.hash.Data(buf[0:RootPtrOfsChecksum], buf[:RootPtrOfsChecksum])
@@ -270,16 +276,18 @@ func (pt *PageTable) parseRootPointer(buf []byte) (RootPointer, error) {
 		return RootPointer{}, fmt.Errorf("invalid root pointer checksum")
 	}
 	return RootPointer{
-		Magic:      bo.Uint64(buf[RootPtrOfsMagic:]),
-		Flags:      bo.Uint16(buf[RootPtrOfsFlags:]),
-		Depth:      bo.Uint16(buf[RootPtrOfsDepth:]),
-		PageSize:   bo.Uint32(buf[RootPtrOfsPageSize:]),
-		PageTable:  PhysicalID(bo.Uint64(buf[RootPtrOfsPageTable:])),
-		Freelist:   PhysicalID(bo.Uint64(buf[RootPtrOfsFreelist:])),
-		Snapshots:  PhysicalID(bo.Uint64(buf[RootPtrOfsSnapshots:])),
-		Timestamp:  bo.Uint64(buf[RootPtrOfsTimestamp:]),
-		Generation: bo.Uint64(buf[RootPtrOfsGeneration:]),
-		UserData:   bo.Uint64(buf[RootPtrOfsUserData:]),
+		Magic:        bo.Uint64(buf[RootPtrOfsMagic:]),
+		Flags:        bo.Uint16(buf[RootPtrOfsFlags:]),
+		Depth:        bo.Uint16(buf[RootPtrOfsDepth:]),
+		PageSize:     bo.Uint32(buf[RootPtrOfsPageSize:]),
+		Timestamp:    bo.Uint64(buf[RootPtrOfsTimestamp:]),
+		Generation:   bo.Uint64(buf[RootPtrOfsGeneration:]),
+		NextPhysical: bo.Uint64(buf[RootPtrOfsNextPhysial:]),
+		NextLogical:  bo.Uint64(buf[RootPtrOfsNextLogical:]),
+		PageTable:    PhysicalID(bo.Uint64(buf[RootPtrOfsPageTable:])),
+		Freelist:     PhysicalID(bo.Uint64(buf[RootPtrOfsFreelist:])),
+		Snapshots:    PhysicalID(bo.Uint64(buf[RootPtrOfsSnapshots:])),
+		UserData:     bo.Uint64(buf[RootPtrOfsUserData:]),
 	}, nil
 }
 
@@ -304,17 +312,19 @@ func (pt *PageTable) Set(tr *Transaction, id LogicalID, pid PhysicalID) error {
 // information about the database state, snapshots, and high-level
 // data. It is written atomically to the first storage page.
 type RootPointer struct {
-	Magic      uint64
-	Flags      uint16
-	Depth      uint16
-	PageSize   uint32
-	PageTable  PhysicalID
-	Freelist   PhysicalID
-	Snapshots  PhysicalID
-	Timestamp  uint64
-	Generation uint64
-	UserData   uint64
-	Checksum   [16]byte
+	Magic        uint64
+	Flags        uint16
+	Depth        uint16
+	PageSize     uint32
+	Timestamp    uint64
+	Generation   uint64
+	NextPhysical uint64
+	NextLogical  uint64
+	PageTable    PhysicalID
+	Freelist     PhysicalID
+	Snapshots    PhysicalID
+	UserData     uint64
+	Checksum     [16]byte
 }
 
 func (rp RootPointer) String() string {
@@ -339,6 +349,22 @@ func (rp RootPointer) String() string {
 	row.Column(fmt.Sprintf("%v", rp.PageSize))
 
 	row = tab.Row()
+	row.Column("Timestamp")
+	row.Column(fmt.Sprintf("%v", rp.Timestamp))
+
+	row = tab.Row()
+	row.Column("Generation")
+	row.Column(fmt.Sprintf("%v", rp.Generation))
+
+	row = tab.Row()
+	row.Column("NextPhysical")
+	row.Column(fmt.Sprintf("%v", rp.NextPhysical))
+
+	row = tab.Row()
+	row.Column("NextLogical")
+	row.Column(fmt.Sprintf("%v", rp.NextLogical))
+
+	row = tab.Row()
 	row.Column("PageTable")
 	row.Column(fmt.Sprintf("%v", rp.PageTable))
 
@@ -349,14 +375,6 @@ func (rp RootPointer) String() string {
 	row = tab.Row()
 	row.Column("Snapshots")
 	row.Column(fmt.Sprintf("%v", rp.Snapshots))
-
-	row = tab.Row()
-	row.Column("Timestamp")
-	row.Column(fmt.Sprintf("%v", rp.Timestamp))
-
-	row = tab.Row()
-	row.Column("Generation")
-	row.Column(fmt.Sprintf("%v", rp.Generation))
 
 	row = tab.Row()
 	row.Column("UserData")
