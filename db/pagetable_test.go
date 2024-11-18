@@ -82,11 +82,7 @@ func TestPageTableGet(t *testing.T) {
 	}
 	params := NewParams()
 
-	db, err := newDB(params, device)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = db.pt.Init()
+	db, err := Create(params, device)
 	if err != nil {
 		t.Fatal(err)
 	}

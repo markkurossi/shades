@@ -77,6 +77,19 @@ func Open(params Params, device Device) (*DB, error) {
 	return nil, fmt.Errorf("not a valid shades DB file")
 }
 
+// NewTransaction starts a new transaction in read-only or read-write
+// mode depeneding on the argument rw.
+func (db *DB) NewTransaction(rw bool) (*Transaction, error) {
+	tr := &Transaction{
+		db: db,
+		rw: rw,
+	}
+	if rw {
+		tr.writable = make(map[PhysicalID]bool)
+	}
+	return tr, nil
+}
+
 func open(params Params, device Device) (*DB, error) {
 	db, err := newDB(params, device)
 	if err != nil {

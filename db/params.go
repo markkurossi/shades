@@ -15,6 +15,6 @@ type Params struct {
 // values.
 func NewParams() Params {
 	return Params{
-		PageSize: /*16*/ 4 * 1024,
+		PageSize: 16 * 1024,
 	}
 }

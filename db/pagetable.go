@@ -252,7 +252,9 @@ func (pt *PageTable) parseRootBlock(buf []byte) error {
 		return fmt.Errorf("no valid root pointer found")
 	}
 
-	fmt.Printf("%v\n", pt.root)
+	if false {
+		fmt.Printf("%v\n", pt.root)
+	}
 	pt.init()
 
 	return nil
