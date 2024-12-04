@@ -7,7 +7,6 @@
 package db
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -47,7 +46,6 @@ func TestTrBasic(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Printf("NewPage: %v\n", ref)
 
 		buf := ref.Data()
 		bo.PutUint64(buf, uint64(id))

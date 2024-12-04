@@ -308,7 +308,6 @@ func (pt *PageTable) commit(tr *BaseTransaction) error {
 
 	fmt.Printf("PageTable.commit: root0:\n%v\n", pt.root0)
 	fmt.Printf("root1:\n%v\n", pt.root1)
-	fmt.Printf("rootBlock: %v\n", pt.rootBlock)
 
 	buf := pt.rootBlock.Data()
 	pt.formatRootBlock(&pt.root1, buf)
