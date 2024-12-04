@@ -87,7 +87,8 @@ func TestPageTableGet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pid, err := db.pt.Get(nil, NewLogicalID(0, 0, uint64(db.pt.numPages)))
+	pid, err := db.pt.get(nil,
+		NewLogicalID(0, 0, uint64(db.pt.root1.numPages())))
 	if err == nil {
 		t.Fatalf("got invalid page")
 	}

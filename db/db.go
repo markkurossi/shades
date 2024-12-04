@@ -70,23 +70,21 @@ func Open(params Params, device Device) (*DB, error) {
 		if err == nil {
 			// Parsed the existing root pointer. Use the generation
 			// time values and open the database.
-			params.PageSize = int(pt.root.PageSize)
+			params.PageSize = int(pt.root0.PageSize)
 			return open(params, device)
 		}
 	}
 	return nil, fmt.Errorf("not a valid shades DB file")
 }
 
-// NewTransaction starts a new transaction in read-only or read-write
-// mode depeneding on the argument rw.
-func (db *DB) NewTransaction(rw bool) (*Transaction, error) {
-	tr := &Transaction{
-		db: db,
-		rw: rw,
+// NewTransaction starts a new base transaction in read-only or
+// read-write mode depeneding on the argument rw.
+func (db *DB) NewTransaction(rw bool) (*BaseTransaction, error) {
+	tr, err := db.pt.newTransaction(rw)
+	if err != nil {
+		return nil, err
 	}
-	if rw {
-		tr.writable = make(map[PhysicalID]bool)
-	}
+	tr.cache = db.cache
 	return tr, nil
 }
 

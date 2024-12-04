@@ -50,17 +50,29 @@ func (cache *Cache) Get(pid PhysicalID) (*PageRef, error) {
 		}
 		cache.cached[pid] = ref
 		ref.pid = pid
+
+		err = ref.read()
+		if err != nil {
+			return nil, err
+		}
 	}
 	if ref.pid != pid {
 		panic("cached PageRef has invalid PhysicalID")
 	}
-	err = ref.read()
-	if err != nil {
-		return nil, err
-	}
 	ref.refcount++
 
 	return ref, nil
+}
+
+func (cache *Cache) flush() error {
+	for _, ref := range cache.cached {
+		err := ref.flush()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (cache *Cache) newRef() (*PageRef, error) {
@@ -92,6 +104,11 @@ type PageRef struct {
 	dirty    bool
 }
 
+func (ref *PageRef) String() string {
+	return fmt.Sprintf("pid=%v, refcount=%v, dirty=%v",
+		ref.pid, ref.refcount, ref.dirty)
+}
+
 // Release releases the page reference.
 func (ref *PageRef) Release() {
 	if ref.refcount <= 0 {
@@ -119,6 +136,7 @@ func (ref *PageRef) read() error {
 	}
 	off := int64(ref.pid.Pagenum() * uint64(ref.db.params.PageSize))
 	_, err := ref.db.device.ReadAt(ref.data, off)
+
 	return err
 }
 

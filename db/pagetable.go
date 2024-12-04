@@ -132,8 +132,8 @@ var RootPtrPadding = []rune("mtr@iki.fi~")
 // must be managed by higher-level objects and data structures.
 type PageTable struct {
 	db        *DB
-	numPages  int
-	root      RootPointer
+	root0     RootPointer
+	root1     RootPointer
 	rootBlock *PageRef
 	hash      *crypto.PRF
 }
@@ -157,20 +157,20 @@ func NewPageTable(db *DB) (*PageTable, error) {
 
 // Init initializes a new page table for the database.
 func (pt *PageTable) Init() error {
-	pt.root.Magic = RootPtrMagic
-	pt.root.Depth = 1
-	pt.root.PageSize = uint32(pt.db.params.PageSize)
-	pt.root.Generation = 1
-	pt.root.NextPhysical = 2 // 0=RootBlock, 1=PageTable
-	pt.root.NextLogical = 1  // 0 is reserved for unallocated pages
-	pt.root.PageTable = NewPhysicalID(0, 1)
-	pt.root.Freelist = 0
-
-	pt.init()
+	pt.root0 = RootPointer{
+		Magic:        RootPtrMagic,
+		Depth:        1,
+		PageSize:     uint32(pt.db.params.PageSize),
+		Generation:   1,
+		NextPhysical: 2, // 0=RootBlock, 1=PageTable
+		NextLogical:  1, // 0 is reserved for unallocated pages
+		PageTable:    NewPhysicalID(0, 1),
+		Freelist:     0,
+	}
 
 	buf := make([]byte, pt.db.params.PageSize)
 
-	pt.formatRootBlock(buf)
+	pt.formatRootBlock(&pt.root0, buf)
 	_, err := pt.db.device.WriteAt(buf, 0)
 	if err != nil {
 		return err
@@ -203,23 +203,23 @@ func (pt *PageTable) Open() error {
 	return nil
 }
 
-func (pt *PageTable) formatRootBlock(buf []byte) {
+func (pt *PageTable) formatRootBlock(root *RootPointer, buf []byte) {
 
-	pt.root.Timestamp = uint64(time.Now().UnixNano())
+	root.Timestamp = uint64(time.Now().UnixNano())
 
 	// Format the first root pointer.
-	bo.PutUint64(buf[RootPtrOfsMagic:], pt.root.Magic)
-	bo.PutUint16(buf[RootPtrOfsFlags:], pt.root.Flags)
-	bo.PutUint16(buf[RootPtrOfsDepth:], pt.root.Depth)
-	bo.PutUint32(buf[RootPtrOfsPageSize:], pt.root.PageSize)
-	bo.PutUint64(buf[RootPtrOfsTimestamp:], pt.root.Timestamp)
-	bo.PutUint64(buf[RootPtrOfsGeneration:], pt.root.Generation)
-	bo.PutUint64(buf[RootPtrOfsNextPhysial:], pt.root.NextPhysical)
-	bo.PutUint64(buf[RootPtrOfsNextLogical:], pt.root.NextLogical)
-	bo.PutUint64(buf[RootPtrOfsPageTable:], uint64(pt.root.PageTable))
-	bo.PutUint64(buf[RootPtrOfsFreelist:], uint64(pt.root.Freelist))
-	bo.PutUint64(buf[RootPtrOfsSnapshots:], uint64(pt.root.Snapshots))
-	bo.PutUint64(buf[RootPtrOfsUserData:], pt.root.UserData)
+	bo.PutUint64(buf[RootPtrOfsMagic:], root.Magic)
+	bo.PutUint16(buf[RootPtrOfsFlags:], root.Flags)
+	bo.PutUint16(buf[RootPtrOfsDepth:], root.Depth)
+	bo.PutUint32(buf[RootPtrOfsPageSize:], root.PageSize)
+	bo.PutUint64(buf[RootPtrOfsTimestamp:], root.Timestamp)
+	bo.PutUint64(buf[RootPtrOfsGeneration:], root.Generation)
+	bo.PutUint64(buf[RootPtrOfsNextPhysial:], root.NextPhysical)
+	bo.PutUint64(buf[RootPtrOfsNextLogical:], root.NextLogical)
+	bo.PutUint64(buf[RootPtrOfsPageTable:], uint64(root.PageTable))
+	bo.PutUint64(buf[RootPtrOfsFreelist:], uint64(root.Freelist))
+	bo.PutUint64(buf[RootPtrOfsSnapshots:], uint64(root.Snapshots))
+	bo.PutUint64(buf[RootPtrOfsUserData:], root.UserData)
 
 	pt.hash.Data(buf[0:RootPtrOfsChecksum], buf[:RootPtrOfsChecksum])
 
@@ -236,38 +236,28 @@ func (pt *PageTable) parseRootBlock(buf []byte) error {
 	if false {
 		fmt.Printf("RootBlock:\n%s", hex.Dump(buf))
 	}
+	var root RootPointer
 
 	for i := 0; i+RootPtrSize < len(buf); i += RootPtrSize {
 		gen := bo.Uint64(buf[i+RootPtrOfsGeneration:])
-		if gen <= pt.root.Generation {
+		if gen <= root.Generation {
 			continue
 		}
 		rp, err := pt.parseRootPointer(buf[i : i+RootPtrSize])
 		if err != nil {
 			continue
 		}
-		pt.root = rp
+		root = rp
 	}
-	if pt.root.Generation == 0 {
+	if root.Generation == 0 {
 		return fmt.Errorf("no valid root pointer found")
 	}
-
+	pt.root0 = root
 	if false {
-		fmt.Printf("%v\n", pt.root)
+		fmt.Printf("%v\n", pt.root0)
 	}
-	pt.init()
 
 	return nil
-}
-
-func (pt *PageTable) init() {
-	pt.numPages = 1
-
-	perPage := int(pt.root.PageSize / 8)
-
-	for depth := pt.root.Depth; depth > 0; depth-- {
-		pt.numPages *= perPage
-	}
 }
 
 func (pt *PageTable) parseRootPointer(buf []byte) (RootPointer, error) {
@@ -293,21 +283,221 @@ func (pt *PageTable) parseRootPointer(buf []byte) (RootPointer, error) {
 	}, nil
 }
 
+func (pt *PageTable) newTransaction(rw bool) (*BaseTransaction, error) {
+	if pt.root1.Generation > pt.root0.Generation {
+		return nil, fmt.Errorf("base transaction already started")
+	}
+	pt.root1 = pt.root0
+	pt.root1.Generation++
+
+	tr := &BaseTransaction{
+		pt: pt,
+		rw: rw,
+	}
+	if rw {
+		tr.writable = make(map[PhysicalID]PhysicalID)
+	}
+	return tr, nil
+}
+
+func (pt *PageTable) commit(tr *BaseTransaction) error {
+	if !tr.rw {
+		pt.root1.Generation = pt.root0.Generation
+		return nil
+	}
+
+	fmt.Printf("PageTable.commit: root0:\n%v\n", pt.root0)
+	fmt.Printf("root1:\n%v\n", pt.root1)
+	fmt.Printf("rootBlock: %v\n", pt.rootBlock)
+
+	buf := pt.rootBlock.Data()
+	pt.formatRootBlock(&pt.root1, buf)
+
+	err := pt.db.cache.flush()
+	if err != nil {
+		return err
+	}
+
+	err = pt.db.device.Sync()
+	if err != nil {
+		return err
+	}
+
+	pt.root0 = pt.root1
+
+	return nil
+}
+
+func (pt *PageTable) abort(tr *BaseTransaction) error {
+	pt.root1.Generation = pt.root0.Generation
+	return nil
+}
+
+func (pt *PageTable) allocLogicalID() (LogicalID, error) {
+	// XXX LogicalID freelist.
+
+	pagenum := pt.root1.NextLogical
+	pt.root1.NextLogical++
+
+	return NewLogicalID(0, 0, pagenum), nil
+}
+
+func (pt *PageTable) freeLogicalID(id LogicalID) error {
+	return fmt.Errorf("PageTable.freeLogicalID not implemented yet")
+}
+
+func (pt *PageTable) allocPhysicalID() (PhysicalID, error) {
+	// XXX PhysicalID freelist
+
+	pagenum := pt.root1.NextPhysical
+	pt.root1.NextPhysical++
+
+	return NewPhysicalID(0, pagenum), nil
+}
+
+func (pt *PageTable) freePhysicalID(pid PhysicalID) error {
+	return fmt.Errorf("PageTable.freePhysicalID not implemented yet")
+}
+
 // Get maps the logical ID to its current physical ID.
-func (pt *PageTable) Get(tr *Transaction, id LogicalID) (PhysicalID, error) {
+func (pt *PageTable) get(tr *BaseTransaction, id LogicalID) (
+	PhysicalID, error) {
+
 	pagenum := id.Pagenum()
 
-	if pagenum >= uint64(pt.numPages) {
+	if pagenum >= uint64(pt.root1.numPages()) {
 		return 0, fmt.Errorf("unmapped page %s", id)
 	}
 
-	return 0, fmt.Errorf("PageTable.Get not implemented yet")
+	perPage := uint64(pt.root1.idsPerPage())
+
+	var perID uint64 = 1
+	var depth int
+	for depth = int(pt.root1.Depth); depth > 0; depth-- {
+		perID *= perPage
+	}
+
+	// Traverse page table.
+
+	pageTable := pt.root1.PageTable
+	ref, err := pt.db.cache.Get(pageTable)
+	if err != nil {
+		return 0, err
+	}
+
+	for depth = int(pt.root1.Depth); depth > 1; depth-- {
+		idx := pagenum / perID
+		pagenum = pagenum % perID
+
+		perID /= perPage
+
+		buf := ref.Read()
+		pageTable = PhysicalID(bo.Uint64(buf[idx*8:]))
+
+		ref, err = pt.db.cache.Get(pageTable)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	buf := ref.Read()
+	pid := PhysicalID(bo.Uint64(buf[pagenum*8:]))
+
+	ref.Release()
+
+	return pid, nil
 }
 
 // Set updates the mapping from the logical ID id to the physical ID
 // pid.
-func (pt *PageTable) Set(tr *Transaction, id LogicalID, pid PhysicalID) error {
-	return fmt.Errorf("PageTable.Set not implemented yet")
+func (pt *PageTable) set(tr *BaseTransaction, id LogicalID,
+	pid PhysicalID) error {
+
+	pagenum := id.Pagenum()
+
+	for pagenum >= uint64(pt.root1.numPages()) {
+		pt.root1.Depth++
+	}
+
+	perPage := uint64(pt.root1.idsPerPage())
+
+	var perID uint64 = 1
+	var depth int
+	for depth = int(pt.root1.Depth); depth > 0; depth-- {
+		perID *= perPage
+	}
+
+	// Traverse page table.
+
+	pageTable := pt.root1.PageTable
+	ref, pageTable, err := pt.writable(tr, pageTable)
+	if err != nil {
+		return err
+	}
+	pt.root1.PageTable = pageTable
+
+	for depth = int(pt.root1.Depth); depth > 1; depth-- {
+		idx := pagenum / perID
+		pagenum = pagenum % perID
+
+		perID /= perPage
+
+		buf := ref.Data()
+		pageTable = PhysicalID(bo.Uint64(buf[idx*8:]))
+
+		var nref *PageRef
+		nref, pageTable, err = pt.writable(tr, pageTable)
+		if err != nil {
+			ref.Release()
+			return err
+		}
+		ref = nref
+
+		bo.PutUint64(buf[idx*8:], uint64(pageTable))
+	}
+
+	buf := ref.Data()
+	bo.PutUint64(buf[pagenum*8:], uint64(pid))
+	ref.Release()
+
+	return nil
+}
+
+func (pt *PageTable) writable(tr *BaseTransaction, pid PhysicalID) (
+	*PageRef, PhysicalID, error) {
+	_, ok := tr.writable[pid]
+	if ok {
+		ref, err := pt.db.cache.Get(pid)
+		if err != nil {
+			return nil, 0, err
+		}
+		return ref, pid, nil
+	}
+
+	// Copy page table page.
+
+	newPid, err := pt.allocPhysicalID()
+	if err != nil {
+		return nil, 0, err
+	}
+	oldRef, err := tr.cache.Get(pid)
+	if err != nil {
+		pt.freePhysicalID(newPid)
+		return nil, 0, err
+	}
+	newRef, err := pt.db.cache.Get(newPid)
+	if err != nil {
+		pt.freePhysicalID(newPid)
+		oldRef.Release()
+		return nil, 0, err
+	}
+
+	copy(newRef.Data(), oldRef.Read())
+	oldRef.Release()
+
+	tr.writable[newPid] = pid
+
+	return newRef, newPid, nil
 }
 
 // RootPointer implements the database root, which contains
@@ -327,6 +517,21 @@ type RootPointer struct {
 	Snapshots    PhysicalID
 	UserData     uint64
 	Checksum     [16]byte
+}
+
+func (rp RootPointer) idsPerPage() int {
+	return int(rp.PageSize / 8)
+}
+
+func (rp RootPointer) numPages() int {
+	perPage := rp.idsPerPage()
+	numPages := 1
+
+	for depth := rp.Depth; depth > 0; depth-- {
+		numPages *= perPage
+	}
+
+	return numPages
 }
 
 func (rp RootPointer) String() string {
