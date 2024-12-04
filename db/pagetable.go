@@ -375,7 +375,7 @@ func (pt *PageTable) get(tr *BaseTransaction, id LogicalID) (
 	pagenum := id.Pagenum()
 
 	if pagenum >= uint64(pt.root1.numPages()) {
-		return 0, fmt.Errorf("unmapped page %s", id)
+		return 0, fmt.Errorf("unmapped page %v", id)
 	}
 
 	perPage := uint64(pt.root1.idsPerPage())
@@ -402,6 +402,9 @@ func (pt *PageTable) get(tr *BaseTransaction, id LogicalID) (
 
 		buf := ref.Read()
 		pageTable = PhysicalID(bo.Uint64(buf[idx*8:]))
+		if pageTable.Pagenum() == 0 {
+			return 0, fmt.Errorf("unmapped page %v", id)
+		}
 
 		ref, err = pt.db.cache.Get(pageTable)
 		if err != nil {
@@ -411,8 +414,11 @@ func (pt *PageTable) get(tr *BaseTransaction, id LogicalID) (
 
 	buf := ref.Read()
 	pid := PhysicalID(bo.Uint64(buf[pagenum*8:]))
-
 	ref.Release()
+
+	if pid.Pagenum() == 0 {
+		return 0, fmt.Errorf("unmapped page %v", id)
+	}
 
 	return pid, nil
 }
@@ -455,14 +461,31 @@ func (pt *PageTable) set(tr *BaseTransaction, id LogicalID,
 		pageTable = PhysicalID(bo.Uint64(buf[idx*8:]))
 
 		var nref *PageRef
-		nref, pageTable, err = pt.writable(tr, pageTable)
-		if err != nil {
-			ref.Release()
-			return err
-		}
-		ref = nref
+		if pageTable.Pagenum() == 0 {
+			// On-demand allocate missing page table pages.
+			pageTable, err = pt.allocPhysicalID()
+			if err != nil {
+				ref.Release()
+				return err
+			}
+			nref, err = pt.db.cache.New(pageTable, nil)
+			if err != nil {
+				pt.freePhysicalID(pageTable)
+				ref.Release()
+				return err
+			}
 
+		} else {
+			nref, pageTable, err = pt.writable(tr, pageTable)
+			if err != nil {
+				ref.Release()
+				return err
+			}
+		}
 		bo.PutUint64(buf[idx*8:], uint64(pageTable))
+		ref.Release()
+
+		ref = nref
 	}
 
 	buf := ref.Data()
