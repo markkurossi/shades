@@ -40,14 +40,13 @@ func (tr *BaseTransaction) NewPage() (*PageRef, LogicalID, error) {
 	}
 	tr.writable[pid] = 0
 
-	ref, err := tr.cache.Get(pid)
+	ref, err := tr.cache.New(pid, nil)
 	if err != nil {
 		delete(tr.writable, pid)
 		tr.pt.freePhysicalID(pid)
 		tr.pt.freeLogicalID(id)
 		return nil, 0, err
 	}
-	ref.refcount++
 
 	return ref, id, nil
 }
@@ -82,21 +81,18 @@ func (tr *BaseTransaction) WritablePage(id LogicalID) (*PageRef, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Make shadow copy of the page.
 	oldRef, err := tr.cache.Get(pid)
 	if err != nil {
 		tr.pt.freePhysicalID(newPid)
 		return nil, err
 	}
-	newRef, err := tr.cache.Get(newPid)
+	defer oldRef.Release()
+
+	newRef, err := tr.cache.New(newPid, oldRef.Read())
 	if err != nil {
 		tr.pt.freePhysicalID(newPid)
-		oldRef.Release()
 		return nil, err
 	}
-	copy(newRef.Data(), oldRef.Read())
-	oldRef.Release()
-
 	err = tr.pt.set(tr, id, newPid)
 	if err != nil {
 		tr.pt.freePhysicalID(newPid)
@@ -104,6 +100,7 @@ func (tr *BaseTransaction) WritablePage(id LogicalID) (*PageRef, error) {
 		return nil, err
 	}
 	tr.writable[newPid] = pid
+
 	return newRef, nil
 }
 

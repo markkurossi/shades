@@ -157,6 +157,22 @@ func NewPageTable(db *DB) (*PageTable, error) {
 
 // Init initializes a new page table for the database.
 func (pt *PageTable) Init() error {
+	var err error
+
+	pt.rootBlock, err = pt.db.cache.New(RootBlock, nil)
+	if err != nil {
+		return err
+	}
+	_ = pt.rootBlock.Data()
+
+	pageTable := NewPhysicalID(0, 1)
+	ref, err := pt.db.cache.New(pageTable, nil)
+	if err != nil {
+		return err
+	}
+	_ = ref.Data()
+	ref.Release()
+
 	pt.root0 = RootPointer{
 		Magic:        RootPtrMagic,
 		Depth:        1,
@@ -164,22 +180,17 @@ func (pt *PageTable) Init() error {
 		Generation:   1,
 		NextPhysical: 2, // 0=RootBlock, 1=PageTable
 		NextLogical:  1, // 0 is reserved for unallocated pages
-		PageTable:    NewPhysicalID(0, 1),
+		PageTable:    pageTable,
 		Freelist:     0,
 	}
 
-	buf := make([]byte, pt.db.params.PageSize)
+	pt.formatRootBlock(&pt.root0, pt.rootBlock.Data())
 
-	pt.formatRootBlock(&pt.root0, buf)
-	_, err := pt.db.device.WriteAt(buf, 0)
+	err = pt.db.cache.flush()
 	if err != nil {
 		return err
 	}
 	err = pt.db.device.Sync()
-	if err != nil {
-		return err
-	}
-	pt.rootBlock, err = pt.db.cache.Get(RootBlock)
 	if err != nil {
 		return err
 	}
@@ -316,7 +327,6 @@ func (pt *PageTable) commit(tr *BaseTransaction) error {
 	if err != nil {
 		return err
 	}
-
 	err = pt.db.device.Sync()
 	if err != nil {
 		return err
@@ -484,16 +494,13 @@ func (pt *PageTable) writable(tr *BaseTransaction, pid PhysicalID) (
 		pt.freePhysicalID(newPid)
 		return nil, 0, err
 	}
-	newRef, err := pt.db.cache.Get(newPid)
+	defer oldRef.Release()
+
+	newRef, err := pt.db.cache.New(newPid, oldRef.Read())
 	if err != nil {
 		pt.freePhysicalID(newPid)
-		oldRef.Release()
 		return nil, 0, err
 	}
-
-	copy(newRef.Data(), oldRef.Read())
-	oldRef.Release()
-
 	tr.writable[newPid] = pid
 
 	return newRef, newPid, nil

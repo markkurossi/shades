@@ -7,11 +7,23 @@
 package db
 
 import (
+	"os"
 	"testing"
 )
 
 func TestTrBasic(t *testing.T) {
-	device := NewMemDevice(1024 * 1024)
+	var device Device
+	var err error
+
+	if false {
+		// XXX syscall.O_DIRECT
+		device, err = os.OpenFile(",test.shades", os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		device = NewMemDevice(1024 * 1024)
+	}
 	params := NewParams()
 	params.PageSize = 1024
 

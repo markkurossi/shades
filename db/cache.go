@@ -64,6 +64,28 @@ func (cache *Cache) Get(pid PhysicalID) (*PageRef, error) {
 	return ref, nil
 }
 
+// New gets an empty page reference for the new physical page.
+func (cache *Cache) New(pid PhysicalID, init []byte) (*PageRef, error) {
+	_, ok := cache.cached[pid]
+	if ok {
+		return nil, fmt.Errorf("page %v is not new", pid)
+	}
+	ref, err := cache.newRef()
+	if err != nil {
+		return nil, err
+	}
+	cache.cached[pid] = ref
+	ref.pid = pid
+
+	n := copy(ref.data, init)
+	for i := n; i < len(ref.data); i++ {
+		ref.data[i] = 0
+	}
+	ref.refcount++
+
+	return ref, nil
+}
+
 func (cache *Cache) flush() error {
 	for _, ref := range cache.cached {
 		err := ref.flush()
@@ -80,11 +102,16 @@ func (cache *Cache) newRef() (*PageRef, error) {
 	for {
 		ref := &cache.lru[cache.clock]
 		if ref.refcount == 0 {
-			err := ref.flush()
-			if err != nil {
-				return nil, err
+			// Don't flush and uncache zero pids since they mark an
+			// unallocated page, but the zero pid is also used for the
+			// root pointer.
+			if ref.pid != 0 {
+				err := ref.flush()
+				if err != nil {
+					return nil, err
+				}
+				delete(cache.cached, ref.pid)
 			}
-			delete(cache.cached, ref.pid)
 			return ref, nil
 		}
 		cache.clock++
