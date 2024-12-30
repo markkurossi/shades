@@ -7,6 +7,7 @@
 package db
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"testing"
@@ -67,7 +68,7 @@ func TestLogicalID(t *testing.T) {
 	}
 }
 
-func TestPageTableGet(t *testing.T) {
+func TestPageTableOpen(t *testing.T) {
 	var device Device
 	var err error
 
@@ -110,6 +111,76 @@ func TestPageTableGet(t *testing.T) {
 			dev.buf[idx]++
 		}
 		_, err = Open(params, device)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestPageTableLevels(t *testing.T) {
+	device := NewMemDevice(1024 * 1024 * 1024)
+	params := NewParams()
+	params.PageSize = 1024
+
+	db, err := Create(params, device)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tr, err := db.NewTransaction(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	perPage := db.pt.root0.idsPerPage()
+
+	// Create 3 levels of page table.
+	count := perPage * perPage * perPage
+
+	fmt.Printf("perPage: %v, count: %v\n", perPage, count)
+
+	// Map first and last ID of each leaf page.
+	for i := 0; i < count; i += perPage {
+		err = db.pt.set(tr, LogicalID(i), PhysicalID(i+1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		last := i + perPage - 1
+		err = db.pt.set(tr, LogicalID(last), PhysicalID(last+1))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	err = tr.Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Open database and verify mappings.
+
+	if true {
+		db, err = Open(params, device)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tr, err = db.NewTransaction(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < count; i += perPage {
+		pid, err := db.pt.get(tr, LogicalID(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pid.Pagenum() != uint64(i+1) {
+			t.Errorf("ID %v mapped to %v, expected %v\n", i, pid, i)
+		}
+		last := i + perPage - 1
+		pid, err = db.pt.get(tr, LogicalID(last))
 		if err != nil {
 			t.Fatal(err)
 		}

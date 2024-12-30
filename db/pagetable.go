@@ -382,7 +382,7 @@ func (pt *PageTable) get(tr *BaseTransaction, id LogicalID) (
 
 	var perID uint64 = 1
 	var depth int
-	for depth = int(pt.root1.Depth); depth > 0; depth-- {
+	for depth = int(pt.root1.Depth); depth > 1; depth-- {
 		perID *= perPage
 	}
 
@@ -402,6 +402,8 @@ func (pt *PageTable) get(tr *BaseTransaction, id LogicalID) (
 
 		buf := ref.Read()
 		pageTable = PhysicalID(bo.Uint64(buf[idx*8:]))
+		ref.Release()
+
 		if pageTable.Pagenum() == 0 {
 			return 0, fmt.Errorf("unmapped page %v", id)
 		}
@@ -431,6 +433,22 @@ func (pt *PageTable) set(tr *BaseTransaction, id LogicalID,
 	pagenum := id.Pagenum()
 
 	for pagenum >= uint64(pt.root1.numPages()) {
+		// Increase page table depth.
+		pageTable, err := pt.allocPhysicalID()
+		if err != nil {
+			return err
+		}
+		ref, err := pt.db.cache.New(pageTable, nil)
+		if err != nil {
+			pt.freePhysicalID(pageTable)
+			return err
+		}
+		tr.writable[pageTable] = 0
+		buf := ref.Data()
+		bo.PutUint64(buf, uint64(pt.root1.PageTable))
+		ref.Release()
+
+		pt.root1.PageTable = pageTable
 		pt.root1.Depth++
 	}
 
@@ -438,7 +456,7 @@ func (pt *PageTable) set(tr *BaseTransaction, id LogicalID,
 
 	var perID uint64 = 1
 	var depth int
-	for depth = int(pt.root1.Depth); depth > 0; depth-- {
+	for depth = int(pt.root1.Depth); depth > 1; depth-- {
 		perID *= perPage
 	}
 
@@ -474,6 +492,7 @@ func (pt *PageTable) set(tr *BaseTransaction, id LogicalID,
 				ref.Release()
 				return err
 			}
+			tr.writable[pageTable] = 0
 
 		} else {
 			nref, pageTable, err = pt.writable(tr, pageTable)
