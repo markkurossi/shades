@@ -175,7 +175,7 @@ func (pt *PageTable) Init() error {
 
 	pt.root0 = RootPointer{
 		Magic:        RootPtrMagic,
-		Depth:        1,
+		Depth:        0,
 		PageSize:     uint32(pt.db.params.PageSize),
 		Generation:   1,
 		NextPhysical: 2, // 0=RootBlock, 1=PageTable
@@ -382,7 +382,7 @@ func (pt *PageTable) get(tr *BaseTransaction, id LogicalID) (
 
 	var perID uint64 = 1
 	var depth int
-	for depth = int(pt.root1.Depth); depth > 1; depth-- {
+	for depth = int(pt.root1.Depth); depth > 0; depth-- {
 		perID *= perPage
 	}
 
@@ -394,7 +394,7 @@ func (pt *PageTable) get(tr *BaseTransaction, id LogicalID) (
 		return 0, err
 	}
 
-	for depth = int(pt.root1.Depth); depth > 1; depth-- {
+	for depth = int(pt.root1.Depth); depth > 0; depth-- {
 		idx := pagenum / perID
 		pagenum = pagenum % perID
 
@@ -459,7 +459,7 @@ func (pt *PageTable) set(tr *BaseTransaction, id LogicalID,
 
 	var perID uint64 = 1
 	var depth int
-	for depth = int(pt.root1.Depth); depth > 1; depth-- {
+	for depth = int(pt.root1.Depth); depth > 0; depth-- {
 		perID *= perPage
 	}
 
@@ -472,7 +472,7 @@ func (pt *PageTable) set(tr *BaseTransaction, id LogicalID,
 	}
 	pt.root1.PageTable = pageTable
 
-	for depth = int(pt.root1.Depth); depth > 1; depth-- {
+	for depth = int(pt.root1.Depth); depth > 0; depth-- {
 		idx := pagenum / perID
 		pagenum = pagenum % perID
 
@@ -576,7 +576,7 @@ func (rp RootPointer) idsPerPage() int {
 
 func (rp RootPointer) numPages() int {
 	perPage := rp.idsPerPage()
-	numPages := 1
+	numPages := perPage
 
 	for depth := rp.Depth; depth > 0; depth-- {
 		numPages *= perPage
