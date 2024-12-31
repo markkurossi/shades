@@ -431,6 +431,9 @@ func (pt *PageTable) set(tr *BaseTransaction, id LogicalID,
 	pid PhysicalID) error {
 
 	pagenum := id.Pagenum()
+	if pagenum == 0 {
+		panic("mapping logical page 0")
+	}
 
 	for pagenum >= uint64(pt.root1.numPages()) {
 		// Increase page table depth.
